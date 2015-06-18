@@ -1,0 +1,15 @@
+dnl process with autoconf to produce a 'configure' script
+
+AC_INIT(gtkdisp.c)
+AM_INIT_AUTOMAKE(gtkdisp, 1.0)
+
+# we want largefile support, if possible
+AC_SYS_LARGEFILE
+
+AC_PROG_CC
+
+PKG_CHECK_MODULES(PKGFLAGS, gtk+-2.0 vips)
+AC_SUBST(PKGFLAGS_CFLAGS)
+AC_SUBST(PKGFLAGS_LIBS)
+
+AC_OUTPUT(Makefile)
