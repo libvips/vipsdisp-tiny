@@ -1,9 +1,6 @@
 test-driver
-test/test-suite.log
-test/test_all.sh.log
-test/test_all.sh.trs
-vips-disp
-vips-disp-*.tar.gz
+vipsdisp
+vipsdisp-*.tar.gz
 .deps
 *.o
 .*.swp
