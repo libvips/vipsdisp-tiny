@@ -31,7 +31,8 @@ image_eval( VipsImage * image, VipsProgress *progress, const char *filename )
 	static int previous_precent = -1;
 
 	if( progress->percent != previous_precent ) {
-		printf( "%%%d complete\r", progress->percent );
+		printf( "%s %s: %d%% complete\r", 
+			g_get_prgname(), filename, progress->percent );
 		previous_precent = progress->percent;
 	}
 }
@@ -39,8 +40,8 @@ image_eval( VipsImage * image, VipsProgress *progress, const char *filename )
 static void
 image_posteval( VipsImage *image, VipsProgress *progress, const char *filename )
 {
-	printf( "\nload done for %s in %g seconds\n", 
-		filename, g_timer_elapsed( progress->start, NULL ) );
+	printf( "\nload done in %g seconds\n", 
+		g_timer_elapsed( progress->start, NULL ) );
 }
 
 static VipsImage *
@@ -107,8 +108,9 @@ render_notify( VipsImage *image, VipsRect *rect, void *client )
  * to 8-bit RGB would be a good idea.
  */
 static VipsImage *
-build_display_image( VipsImage *image, GtkWidget *drawing_area )
+build_display_image( VipsImage *in, GtkWidget *drawing_area )
 {
+	VipsImage *image;
 	VipsImage *x;
 
 	/* Edit these to add or remove things from the pipeline we build. These
@@ -120,6 +122,7 @@ build_display_image( VipsImage *image, GtkWidget *drawing_area )
 	/* image represents the head of the pipeline. Hold a ref to it as we
 	 * work.
 	 */
+	image = in;
 	g_object_ref( image ); 
 
 	if( zoom_out ) {
@@ -166,7 +169,6 @@ build_display_image( VipsImage *image, GtkWidget *drawing_area )
 		g_object_unref( x );
 		return( NULL );
 	}
-
 	g_object_unref( image );
 	image = x;
 
@@ -265,6 +267,10 @@ main( int argc, char **argv )
 	gtk_widget_show_all( window );
 
 	gtk_main();
+
+	g_object_unref( region ); 
+	g_object_unref( display ); 
+	g_object_unref( image ); 
 
 	return( 0 );
 }
