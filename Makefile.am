@@ -1,8 +1,8 @@
-bin_PROGRAMS = gtkdisp
+bin_PROGRAMS = vips-disp
 
-gtkdisp_SOURCES = gtkdisp.c
+vips_disp_SOURCES = vips-disp.c
 
-INCLUDES = @PKGFLAGS_CFLAGS@
+AM_CPPFLAGS = @PKGFLAGS_CFLAGS@
 LDADD = @PKGFLAGS_CFLAGS@ @PKGFLAGS_LIBS@
 AM_LDFLAGS = @LDFLAGS@
 

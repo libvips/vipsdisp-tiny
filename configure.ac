@@ -1,7 +1,10 @@
 dnl process with autoconf to produce a 'configure' script
 
-AC_INIT(gtkdisp.c)
-AM_INIT_AUTOMAKE(gtkdisp, 1.0)
+AC_INIT([vips-disp], [1.0])
+
+# foreign stops complaints about a missing README (we use README.md instead)
+# and missing INSTALL (the standard Gnu INSTALL is not very useful)
+AM_INIT_AUTOMAKE([-Wall foreign])
 
 # we want largefile support, if possible
 AC_SYS_LARGEFILE
