@@ -1,15 +1,13 @@
 /* Tiny display-an-image demo program. 
  *
- * This is not supposed to be a complete image viewer, it's just supposed to 
+ * This is not supposed to be a complete image viewer, it's just to 
  * show how to display a VIPS image (or the result of a VIPS computation) in a
  * window.
  *
- * 8-bit RGB images only, though it would be easy to fix this.
- *
  * Compile with:
 
-	cc -g -Wall `pkg-config vips-7.16 gtk+-2.0 --cflags --libs` \
-		gtkdisp.c  -o gtkdisp
+	cc -g -Wall `pkg-config vips gtk+-2.0 --cflags --libs` \
+		vips-disp.c -o vips-disp
 
  */
 
@@ -22,25 +20,31 @@
  * somewhere.
  */
 static void
-image_preeval (VipsImage * image, const char *filename)
+image_preeval( VipsImage *image, VipsProgress *progress, const char *filename )
 {
 	printf( "load starting for %s ...\n", filename );
 }
 
 static void
-image_eval (VipsImage * image, VipsProgress *progress, const char *filename)
+image_eval( VipsImage * image, VipsProgress *progress, const char *filename )
 {
-	printf( "%%%d complete\r", progress->percent );
+	static int previous_precent = -1;
+
+	if( progress->percent != previous_precent ) {
+		printf( "%%%d complete\r", progress->percent );
+		previous_precent = progress->percent;
+	}
 }
 
 static void
-image_posteval (VipsImage * image, const char *filename)
+image_posteval( VipsImage *image, VipsProgress *progress, const char *filename )
 {
-	printf( "load done for %s\n", filename );
+	printf( "\nload done for %s in %g seconds\n", 
+		filename, g_timer_elapsed( progress->start, NULL ) );
 }
 
 static VipsImage *
-load_image (const char *filename)
+load_image( const char *filename )
 {
 	VipsImage *image;
 
@@ -61,41 +65,41 @@ load_image (const char *filename)
 	return image;
 }
 
-typedef struct {
-  GtkWidget *drawing_area;
-  Rect rect;
+typedef struct _Update {
+	GtkWidget *drawing_area;
+	VipsRect rect;
 } Update;
 
 /* The main GUI thread runs this when it's idle and there are tiles that need
  * painting. 
  */
 static gboolean
-render_cb (Update * update)
+render_cb( Update *update )
 {
-  gtk_widget_queue_draw_area (update->drawing_area,
+  gtk_widget_queue_draw_area( update->drawing_area,
 			      update->rect.left, update->rect.top,
-			      update->rect.width, update->rect.height);
+			      update->rect.width, update->rect.height );
 
-  g_free (update);
+  g_free( update );
 
-  return (FALSE);
+  return( FALSE );
 }
 
-/* Come here from the im_render() background thread when a tile has been
+/* Come here from the vips_sink_screen() background thread when a tile has been
  * calculated. We can't paint the screen directly since the main GUI thread
  * might be doing something. Instead, we add an idle callback which will be
  * run by the main GUI thread when it next hits the mainloop.
  */
 static void
-render_notify (IMAGE * image, Rect * rect, void *client)
+render_notify( VipsImage *image, VipsRect *rect, void *client )
 {
-  GtkWidget *drawing_area = GTK_WIDGET (client);
-  Update *update = g_new (Update, 1);
+	GtkWidget *drawing_area = GTK_WIDGET( client );
+	Update *update = g_new( Update, 1 );
 
-  update->rect = *rect;
-  update->drawing_area = drawing_area;
+	update->rect = *rect;
+	update->drawing_area = drawing_area;
 
-  g_idle_add ((GSourceFunc) render_cb, update);
+	g_idle_add( (GSourceFunc) render_cb, update );
 }
 
 /* Make the image for display from the raw disc image. Could do
@@ -105,7 +109,6 @@ render_notify (IMAGE * image, Rect * rect, void *client)
 static VipsImage *
 build_display_image( VipsImage *image, GtkWidget *drawing_area )
 {
-	VipsImage *out;
 	VipsImage *x;
 
 	/* Edit these to add or remove things from the pipeline we build. These
@@ -114,32 +117,64 @@ build_display_image( VipsImage *image, GtkWidget *drawing_area )
 	const gboolean zoom_in = FALSE;
 	const gboolean zoom_out = TRUE;
 
+	/* image represents the head of the pipeline. Hold a ref to it as we
+	 * work.
+	 */
+	g_object_ref( image ); 
+
 	if( zoom_out ) {
-		if( vips_subsample( image, &x, 4, 4, NULL ) )
+		if( vips_subsample( image, &x, 4, 4, NULL ) ) {
+			g_object_unref( image );
 			return( NULL ); 
+		}
 		g_object_unref( image );
 		image = x;
 	}
 
 	if( zoom_in ) {
-		if( vips_zoom( image, &x, 4, 4, NULL ) )
+		if( vips_zoom( image, &x, 4, 4, NULL ) ) {
+			g_object_unref( image );
 			return( NULL ); 
+		}
 		g_object_unref( image );
 		image = x;
 	}
 
-	out = vips_image_new();
-	if( vips_sink_screen( image, out, NULL, 128, 128, 400, 0, 
+	/* This won't work for CMYK, you need to mess about with ICC profiles
+	 * for that, but it will do everything else.
+	 */
+	if( vips_colourspace( image, &x, VIPS_INTERPRETATION_sRGB, NULL ) ) {
+		g_object_unref( image );
+		return( NULL ); 
+	}
+	g_object_unref( image );
+	image = x;
+
+	/* Drop any alpha.
+	 */
+	if( vips_extract_band( image, &x, 0, "n", 3, NULL ) ) {
+		g_object_unref( image );
+		return( NULL ); 
+	}
+	g_object_unref( image );
+	image = x;
+
+	x = vips_image_new();
+	if( vips_sink_screen( image, x, NULL, 128, 128, 400, 0, 
 		render_notify, drawing_area ) ) {
-		g_object_unref( out );
+		g_object_unref( image );
+		g_object_unref( x );
 		return( NULL );
 	}
 
-	return( out );
+	g_object_unref( image );
+	image = x;
+
+	return( image );
 }
 
 static void
-expose_rect (GtkWidget * drawing_area, REGION * region, GdkRectangle * expose)
+expose_rect( GtkWidget *drawing_area, VipsRegion *region, GdkRectangle *expose )
 {
 	VipsRect image;
 	VipsRect area;
@@ -200,7 +235,6 @@ main( int argc, char **argv )
 
 	if( VIPS_INIT( argv[0] ) )
 		vips_error_exit( "unable to start VIPS" );
-
 	gtk_init( &argc, &argv );
 
 	if( argc != 2 )
