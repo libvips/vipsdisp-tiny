@@ -1,6 +1,6 @@
 dnl process with autoconf to produce a 'configure' script
 
-AC_INIT([vips-disp], [1.0])
+AC_INIT([vipsdisp], [1.0])
 
 # foreign stops complaints about a missing README (we use README.md instead)
 # and missing INSTALL (the standard Gnu INSTALL is not very useful)
@@ -11,7 +11,7 @@ AC_SYS_LARGEFILE
 
 AC_PROG_CC
 
-PKG_CHECK_MODULES(PKGFLAGS, gtk+-2.0 vips >= 8.1)
+PKG_CHECK_MODULES(PKGFLAGS, gtk+-3.0 vips >= 8.1)
 AC_SUBST(PKGFLAGS_CFLAGS)
 AC_SUBST(PKGFLAGS_LIBS)
 

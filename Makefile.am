@@ -1,6 +1,6 @@
-bin_PROGRAMS = vips-disp
+bin_PROGRAMS = vipsdisp
 
-vips_disp_SOURCES = vips-disp.c
+vipsdisp_SOURCES = vipsdisp.c
 
 AM_CPPFLAGS = @PKGFLAGS_CFLAGS@
 LDADD = @PKGFLAGS_CFLAGS@ @PKGFLAGS_LIBS@

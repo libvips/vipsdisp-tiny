@@ -1,8 +1,6 @@
-# vips-disp
+# vipsdisp
 
-Tiny C program to display an image with vips8 and gtk+.
+Tiny C program to display an image with vips8.1 and gtk+ 3.
 
-Not yet done. This is supposed to be an experiment, testing the ground for
-nip3.
-
+This is supposed to be a minimal example program rather than useful in itself.
 

@@ -20,13 +20,15 @@
  * somewhere.
  */
 static void
-image_preeval( VipsImage *image, VipsProgress *progress, const char *filename )
+vipsdisp_preeval( VipsImage *image, 
+	VipsProgress *progress, const char *filename )
 {
 	printf( "load starting for %s ...\n", filename );
 }
 
 static void
-image_eval( VipsImage * image, VipsProgress *progress, const char *filename )
+vipsdisp_eval( VipsImage *image, 
+	VipsProgress *progress, const char *filename )
 {
 	static int previous_precent = -1;
 
@@ -38,14 +40,15 @@ image_eval( VipsImage * image, VipsProgress *progress, const char *filename )
 }
 
 static void
-image_posteval( VipsImage *image, VipsProgress *progress, const char *filename )
+vipsdisp_posteval( VipsImage *image, 
+	VipsProgress *progress, const char *filename )
 {
 	printf( "\nload done in %g seconds\n", 
 		g_timer_elapsed( progress->start, NULL ) );
 }
 
 static VipsImage *
-load_image( const char *filename )
+vipsdisp_load( const char *filename )
 {
 	VipsImage *image;
 
@@ -57,11 +60,11 @@ load_image( const char *filename )
 	 */
 	vips_image_set_progress( image, TRUE ); 
 	g_signal_connect( image, "preeval",
-		G_CALLBACK( image_preeval ), (void *) filename);
+		G_CALLBACK( vipsdisp_preeval ), (void *) filename);
 	g_signal_connect( image, "eval",
-		G_CALLBACK( image_eval ), (void *) filename);
+		G_CALLBACK( vipsdisp_eval ), (void *) filename);
 	g_signal_connect( image, "posteval",
-		G_CALLBACK( image_posteval ), (void *) filename);
+		G_CALLBACK( vipsdisp_posteval ), (void *) filename);
 
 	return image;
 }
@@ -108,7 +111,7 @@ render_notify( VipsImage *image, VipsRect *rect, void *client )
  * to 8-bit RGB would be a good idea.
  */
 static VipsImage *
-build_display_image( VipsImage *in, GtkWidget *drawing_area )
+vipsdisp_display_image( VipsImage *in, GtkWidget *drawing_area )
 {
 	VipsImage *image;
 	VipsImage *x;
@@ -176,13 +179,19 @@ build_display_image( VipsImage *in, GtkWidget *drawing_area )
 }
 
 static void
-expose_rect( GtkWidget *drawing_area, VipsRegion *region, GdkRectangle *expose )
+vipsdisp_draw_rect( GtkWidget *drawing_area, 
+	cairo_t *cr, VipsRegion *region, VipsRect *expose )
 {
 	VipsRect image;
-	VipsRect area;
 	VipsRect clip;
-	guchar *buf;
-	int lsk;
+	unsigned char *cairo_buffer;
+	int x, y;
+	cairo_surface_t *surface;
+
+	printf( "vipsdisp_draw_rect: "
+		"left = %d, top = %d, width = %d, height = %d\n",
+		expose->left, expose->top,
+		expose->width, expose->height );
 
 	/* Clip against the image size ... we don't want to try painting 
 	 * outside the image area.
@@ -191,37 +200,67 @@ expose_rect( GtkWidget *drawing_area, VipsRegion *region, GdkRectangle *expose )
 	image.top = 0;
 	image.width = region->im->Xsize;
 	image.height = region->im->Ysize;
-	area.left = expose->x;
-	area.top = expose->y;
-	area.width = expose->width;
-	area.height = expose->height;
-	vips_rect_intersectrect( &image, &area, &clip );
-	if( vips_rect_isempty( &clip ) )
+	vips_rect_intersectrect( &image, expose, &clip );
+	if( vips_rect_isempty( &clip ) ||
+		vips_region_prepare( region, &clip ) )
 		return;
 
-	if( vips_region_prepare( region, &clip ) )
-		return;
-	buf = (guchar *) VIPS_REGION_ADDR( region, clip.left, clip.top );
-	lsk = VIPS_REGION_LSKIP( region );
+	/* libvips is RGB, cairo is ARGB, we have to repack the data.
+	 */
+	cairo_buffer = g_malloc( clip.width * clip.height * 4 );
 
-	gdk_draw_rgb_image( GTK_WIDGET( drawing_area )->window,
-		GTK_WIDGET( drawing_area )->style->white_gc,
-		clip.left, clip.top, clip.width, clip.height,
-		GDK_RGB_DITHER_MAX, buf, lsk );
+	for( y = 0; y < clip.height; y++ ) {
+		VipsPel *p = 
+			VIPS_REGION_ADDR( region, clip.left, clip.top + y );
+		unsigned char *q = cairo_buffer + clip.width * 4 * y;
+
+		for( x = 0; x < clip.width; x++ ) {
+			q[0] = p[2];
+			q[1] = p[1];
+			q[2] = p[0];
+			q[3] = 0;
+
+			p += 3;
+			q += 4;
+		}
+	}
+
+	surface = cairo_image_surface_create_for_data( cairo_buffer, 
+		CAIRO_FORMAT_RGB24, clip.width, clip.height, clip.width * 4 );
+
+	cairo_set_source_surface( cr, surface, clip.left, clip.top );
+
+	cairo_paint( cr );
+
+	g_free( cairo_buffer ); 
+
+	cairo_surface_destroy( surface ); 
 }
 
-static gboolean
-expose_cb( GtkWidget *drawing_area, GdkEventExpose *event, VipsRegion *region )
+static void
+vipsdisp_draw( GtkWidget *drawing_area, cairo_t *cr, VipsRegion *region )
 {
-	GdkRectangle *expose;
-	int i, n;
+	cairo_rectangle_list_t *rectangle_list = 
+		cairo_copy_clip_rectangle_list( cr );
 
-	gdk_region_get_rectangles( event->region, &expose, &n );
-	for( i = 0; i < n; i++ )
-		expose_rect( drawing_area, region, &expose[i] );
-	g_free( expose );
+	printf( "vipsdisp_draw:\n" ); 
 
-	return( TRUE );
+	if( rectangle_list->status == CAIRO_STATUS_SUCCESS ) { 
+		int i;
+
+		for( i = 0; i < rectangle_list->num_rectangles; i++ ) {
+			VipsRect expose;
+
+			expose.left = rectangle_list->rectangles[i].x;
+			expose.top = rectangle_list->rectangles[i].y;
+			expose.width = rectangle_list->rectangles[i].width;
+			expose.height = rectangle_list->rectangles[i].height;
+
+			vipsdisp_draw_rect( drawing_area, cr, region, &expose );
+		}
+	}
+
+	cairo_rectangle_list_destroy( rectangle_list );
 }
 
 int
@@ -242,7 +281,7 @@ main( int argc, char **argv )
 	if( argc != 2 )
 		vips_error_exit( "usage: %s <filename>", argv[0] );
 
-	if( !(image = load_image( argv[1] )) )
+	if( !(image = vipsdisp_load( argv[1] )) )
 		vips_error_exit( "unable to load %s", argv[1] );
 
 	window = gtk_window_new( GTK_WINDOW_TOPLEVEL );
@@ -253,15 +292,14 @@ main( int argc, char **argv )
 	gtk_container_add( GTK_CONTAINER( window ), scrolled_window );
 
 	drawing_area = gtk_drawing_area_new();
-	if( !(display = build_display_image( image, drawing_area )) ||
+	if( !(display = vipsdisp_display_image( image, drawing_area )) ||
 		!(region = vips_region_new( display )) )
 		vips_error_exit( "unable to build display image" );
-	g_signal_connect( drawing_area, "expose_event", 
-		G_CALLBACK( expose_cb ), region );
+	g_signal_connect( drawing_area, "draw", 
+		G_CALLBACK( vipsdisp_draw ), region );
 	gtk_widget_set_size_request( drawing_area, 
 		display->Xsize, display->Ysize );
-	gtk_scrolled_window_add_with_viewport( 
-		GTK_SCROLLED_WINDOW( scrolled_window ), drawing_area );
+	gtk_container_add( GTK_CONTAINER( scrolled_window ), drawing_area );
 
 	gtk_window_set_default_size( GTK_WINDOW( window ), 250, 250 );
 	gtk_widget_show_all( window );
