@@ -6,8 +6,7 @@
  *
  * Compile with:
 
-	cc -g -Wall `pkg-config vips gtk+-2.0 --cflags --libs` \
-		vips-disp.c -o vips-disp
+ gcc -g -Wall vipsdisp.c `pkg-config vips gtk+-3.0 --cflags --libs` -o vipsdisp
 
  */
 
